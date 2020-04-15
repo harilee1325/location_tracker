@@ -1,0 +1,40 @@
+{
+  "project_info": {
+    "project_number": "715273112484",
+    "firebase_url": "https://locationtracker-75793.firebaseio.com",
+    "project_id": "locationtracker-75793",
+    "storage_bucket": "locationtracker-75793.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:715273112484:android:18d72db87969fb915d0f31",
+        "android_client_info": {
+          "package_name": "com.harilee.locationalarm"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "715273112484-1ts4heqsvtjj4ta31nn636nmhedfjn56.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDlwkxEpUwBmXvx2U5O402HHOY94b3pkS4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "715273112484-1ts4heqsvtjj4ta31nn636nmhedfjn56.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
