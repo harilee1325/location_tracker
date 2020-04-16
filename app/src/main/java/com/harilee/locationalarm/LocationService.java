@@ -1,6 +1,8 @@
 package com.harilee.locationalarm;
 
 import android.Manifest;
+import android.app.Activity;
+import android.app.ActivityManager;
 import android.app.AlarmManager;
 import android.app.IntentService;
 import android.app.PendingIntent;
@@ -12,13 +14,17 @@ import android.content.pm.PackageManager;
 import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
+import android.media.AudioAttributes;
 import android.media.AudioManager;
 import android.media.MediaPlayer;
+import android.media.Ringtone;
 import android.media.RingtoneManager;
 import android.net.Uri;
+import android.os.Binder;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.IBinder;
+import android.os.Vibrator;
 import android.util.Log;
 import android.widget.Toast;
 
@@ -35,9 +41,11 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 
+import static android.app.ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND;
+import static android.app.ActivityManager.RunningAppProcessInfo.IMPORTANCE_VISIBLE;
+
 
 public class LocationService extends Service {
-
 
     final static int REQUEST_CODE = 1;
     private static final String TAG = "Service";
@@ -57,12 +65,18 @@ public class LocationService extends Service {
     private ArrayList<String> lngList = new ArrayList<>();
     private ArrayList<String> audio = new ArrayList<>();
     private String audioFile;
-
+    private MediaPlayer mediaPlayer;
+    private PendingIntent pendingIntent;
+    private AlarmManager am;
+    private String latStr, lonStr;
+    private final IBinder binder = new LocalBinder();
 
     private void setAlarm() {
         state = false;
 
         try {
+            Utility.setPreference(this, "AUDIO", audioFile);
+            Utility.setPreference(this, "LOCATION_ID", latStr + lonStr);
 
             NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID)
                     .setSmallIcon(R.drawable.ic_add_alarm_black_24dp)
@@ -70,44 +84,22 @@ public class LocationService extends Service {
                     .setContentText("You have reached one of the locations")
                     .setPriority(NotificationCompat.PRIORITY_DEFAULT)
                     // Set the intent that will fire when the user taps the notification
-//                    .setContentIntent(pendingIntent)
+                    .setContentIntent(pendingIntent)
                     .setAutoCancel(true);
             NotificationManagerCompat notificationManager = NotificationManagerCompat.from(this);
-
             // notificationId is a unique int for each notification that you must define
             notificationManager.notify(1, builder.build());
 
+            Intent intent1 = new Intent(getApplicationContext(), MyBroadCastReceiver.class);
+            sendBroadcast(intent1);
 
-            Uri notification = Uri.parse(audioFile);
-//            RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM);
-            final MediaPlayer mediaPlayer = new MediaPlayer();
-            mediaPlayer.setAudioStreamType(AudioManager.STREAM_MUSIC);
-            mediaPlayer.setDataSource(getApplicationContext(), notification);
-            mediaPlayer.prepare();
-            mediaPlayer.start();
 
-            /*Handler handler = new Handler();
-            handler.postDelayed(new Runnable() {
-                @Override
-                public void run() {
-                    mediaPlayer.stop();
-                }
-            }, 5000);*/
-        } catch (IOException e) {
+        } catch (Exception e) {
             e.printStackTrace();
             Log.e(TAG, "setAlarm: " + e.getLocalizedMessage());
             Toast.makeText(this, e.getLocalizedMessage(), Toast.LENGTH_SHORT).show();
         }
 
-        // Toast.makeText(this, "setting alarm new", Toast.LENGTH_SHORT).show();
-        Log.e(TAG, "setAlarm: ");
-        AlarmManager alarmManager = (AlarmManager) getSystemService(Context.ALARM_SERVICE);
-        if (alarmManager != null) {
-            Intent alarmIntent = new Intent(this, MyBroadCastReceiver.class);
-            PendingIntent pendingIntent = PendingIntent.getBroadcast(this, 0, alarmIntent, 0);
-            alarmManager.setInexactRepeating(AlarmManager.RTC_WAKEUP, System.currentTimeMillis()
-                    + (100), 3000, pendingIntent);
-        }
     }
 
     public boolean IsInCircle() {
@@ -119,6 +111,8 @@ public class LocationService extends Service {
             Location.distanceBetween(current_location_latitude, current_location_longitutde,
                     Double.parseDouble(latList.get(i)), Double.parseDouble(lngList.get(i)), distance);
             if (!(distance[0] > Double.parseDouble(rad))) {
+                latStr = latList.get(i);
+                lonStr = lngList.get(i);
                 audioFile = audio.get(i);
                 return true;
             }
@@ -168,17 +162,30 @@ public class LocationService extends Service {
 
     }
 
-    @Nullable
+    public class LocalBinder extends Binder {
+        LocationService getService() {
+            // Return this instance of LocalService so clients can call public methods
+            return LocationService.this;
+        }
+    }
+
     @Override
     public IBinder onBind(Intent intent) {
-        return null;
+        return binder;
     }
+
+    public void stopPlayer() {
+        if (mediaPlayer.isPlaying()) {
+            mediaPlayer.stop();
+            stopSelf();
+        }
+    }
+
 
     @Override
     public void onCreate() {
         super.onCreate();
         Log.e(TAG, "onCreate: ");
-
         Toast.makeText(getApplicationContext(), "onCreate", Toast.LENGTH_SHORT).show();
     }
 
@@ -225,14 +232,21 @@ public class LocationService extends Service {
 
     }
 
-    @Override
-    public void onTaskRemoved(Intent rootIntent) {
-        super.onTaskRemoved(rootIntent);
-//        Intent intent = new Intent("com.android.ServiceStopped");
-//        intent.putExtra("LAT", lat);
-//        intent.putExtra("LON", lon);
-//        Log.e("TAG", "setAlarm: "+circle.getRadius() );
-//        intent.putExtra("RAD", String.valueOf(rad));
-//        sendBroadcast(intent);
-    }
+
 }
+//     RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM);
+//            mediaPlayer = new MediaPlayer();
+//            mediaPlayer.setAudioStreamType(AudioManager.STREAM_MUSIC);
+//            mediaPlayer.setDataSource(getApplicationContext(), notification);
+//            mediaPlayer.prepare();
+//            mediaPlayer.start();
+//
+//            Toast.makeText(this, "Sending broadcast ", Toast.LENGTH_SHORT).show();
+//            Intent intent1 = new Intent(this, MyBroadCastReceiver.class);
+//
+//            this.pendingIntent = PendingIntent.getBroadcast(this
+//                    , 280192, intent1, 0);
+//
+//            am = (AlarmManager) getSystemService(Activity.ALARM_SERVICE);
+//            am.setInexactRepeating(AlarmManager.RTC_WAKEUP, System.currentTimeMillis()
+//                    + (100), 3000, this.pendingIntent);

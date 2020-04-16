@@ -1,5 +1,7 @@
 package com.harilee.locationalarm;
 
+import java.util.ArrayList;
+
 public class LocationModel {
 
     private String locationName;

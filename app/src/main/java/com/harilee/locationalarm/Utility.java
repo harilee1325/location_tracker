@@ -3,6 +3,7 @@ package com.harilee.locationalarm;
 import android.app.Activity;
 import android.app.Dialog;
 import android.content.Context;
+import android.content.SharedPreferences;
 import android.graphics.drawable.ColorDrawable;
 
 import java.util.Objects;
@@ -10,6 +11,24 @@ import java.util.Objects;
 import me.ibrahimsn.lib.CirclesLoadingView;
 
 public class Utility {
+
+
+
+    public static void setPreference(Context context, String key, String value) {
+
+        SharedPreferences.Editor editor = context.getSharedPreferences("location", Context.MODE_PRIVATE).edit();
+        editor.putString(key, value);
+        editor.apply();
+
+    }
+
+    public static String getPreference(Context context, String key) {
+
+        SharedPreferences prefs = context.getSharedPreferences("location", Context.MODE_PRIVATE);
+        String result = prefs.getString(key, "");
+        //String a = prefs.getString(key,"");
+        return result;
+    }
 
     public static void showGifPopup(final Context mContext, boolean show, Dialog dialog) {
 

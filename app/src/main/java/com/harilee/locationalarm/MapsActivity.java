@@ -1,25 +1,41 @@
 package com.harilee.locationalarm;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.core.app.ActivityCompat;
+import androidx.core.app.NotificationCompat;
+import androidx.core.app.NotificationManagerCompat;
 import androidx.fragment.app.FragmentActivity;
 
 import android.Manifest;
+import android.app.Activity;
 import android.app.AlarmManager;
 import android.app.Dialog;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
+import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
+import android.content.ServiceConnection;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.location.Location;
+import android.location.LocationListener;
 import android.location.LocationManager;
+import android.media.AudioManager;
+import android.media.MediaPlayer;
+import android.media.Ringtone;
+import android.media.RingtoneManager;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.IBinder;
+import android.os.Vibrator;
 import android.util.Log;
 import android.view.View;
+import android.view.WindowManager;
 import android.widget.Toast;
 
 import com.google.android.gms.maps.CameraUpdateFactory;
@@ -31,17 +47,28 @@ import com.google.android.gms.maps.model.CircleOptions;
 import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.MarkerOptions;
 import com.google.android.gms.tasks.OnCompleteListener;
+import com.google.android.gms.tasks.OnFailureListener;
+import com.google.android.gms.tasks.OnSuccessListener;
 import com.google.android.gms.tasks.Task;
 import com.google.common.collect.Maps;
+import com.google.firebase.firestore.DocumentSnapshot;
+import com.google.firebase.firestore.FieldValue;
 import com.google.firebase.firestore.FirebaseFirestore;
 import com.google.firebase.firestore.QueryDocumentSnapshot;
 import com.google.firebase.firestore.QuerySnapshot;
+import com.google.firebase.firestore.SetOptions;
 import com.google.gson.Gson;
 
 import java.lang.reflect.Array;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 import io.grpc.okhttp.internal.Util;
+
+import static android.content.ContentValues.TAG;
 
 public class MapsActivity extends FragmentActivity implements OnMapReadyCallback {
 
@@ -60,7 +87,19 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
     private FirebaseFirestore ref;
     private ArrayList<LocationModel> locationModels = new ArrayList<>();
     private Dialog dialog;
+    private MediaPlayer mediaPlayer;
+    private AlarmManager am;
+    private boolean state;
+    private LocationManager mLocationManager;
+    private ArrayList<String> latList = new ArrayList<>();
+    private ArrayList<String> lngList = new ArrayList<>();
+    private ArrayList<String> audio = new ArrayList<>();
+    private LocationListener mLocationListener;
+    String audioFile;
+    LocationService mService;
+    boolean mBound = false;
 
+    private String rad;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -68,6 +107,8 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         setContentView(R.layout.activity_maps);
 
         dialog = new Dialog(this);
+        getWindow().setFlags(WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS);
         // Obtain the SupportMapFragment and get notified when the map is ready to be used.
         SupportMapFragment mapFragment = (SupportMapFragment) getSupportFragmentManager()
                 .findFragmentById(R.id.map);
@@ -89,33 +130,122 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         }
         Utility.showGifPopup(this, true, dialog);
         getLocationList();
+        mediaPlayer = new MediaPlayer();
+
+        if (getIntent().hasExtra("PLAY")) {
+            String play = getIntent().getStringExtra("PLAY");
+            if (play != null && play.equalsIgnoreCase("yes")) {
+                try {
+                    mediaPlayer.setAudioStreamType(AudioManager.STREAM_MUSIC);
+                    mediaPlayer.setDataSource(Utility.getPreference(this, "AUDIO"));
+                    mediaPlayer.prepare(); // might take long! (for buffering, etc)
+                    mediaPlayer.start();
+
+                    setCounter();
+                } catch (Exception e) {
+                    // TODO: handle exception
+                    Log.e(TAG, "onReceive: " + e.getLocalizedMessage());
+                }
+            }
+        }
 
 
     }
+
+    private void setCounter() {
+
+        String username = Utility.getPreference(this, "USERNAME");
+        String locId = Utility.getPreference(this, "LOCATION_ID");
+        Log.e(TAG, "setCounter: " + username);
+        Log.e(TAG, "setCounter: " + locId);
+        List<String> users = new ArrayList<>();
+        ref = FirebaseFirestore.getInstance();
+        ref.collection("locations")
+                .get()
+                .addOnCompleteListener(task -> {
+                    if (task.isSuccessful() && task.getResult() != null) {
+                        for (QueryDocumentSnapshot documentSnapshot : task.getResult()) {
+                            if (documentSnapshot.exists()) {
+                                String loc = String.valueOf(documentSnapshot.getData().get("lat")) + documentSnapshot.getData().get("lon");
+                                Log.e(TAG, "setCounter:  " + loc + " " + locId);
+                                if (loc.equalsIgnoreCase(locId)) {
+                                    int count = Integer.parseInt(String.valueOf(documentSnapshot.getData().get("count")));
+                                    count++;
+                                    int finalCount = count;
+                                    ref.collection("locations").document(documentSnapshot.getId())
+                                            .update("count", finalCount).addOnSuccessListener(aVoid -> {
+                                        Toast.makeText(this, username + " visit count has been changed to " + finalCount, Toast.LENGTH_SHORT).show();
+                                    });
+                                    ref.collection("locations").document(documentSnapshot.getId())
+                                            .update("users", FieldValue.arrayUnion(username)).addOnSuccessListener(aVoid -> {
+                                        Toast.makeText(this, username + " visited a new location", Toast.LENGTH_SHORT).show();
+                                    });
+
+                                }
+                            }
+                        }
+                    }
+                });
+
+        //adding location to visited counter
+        ref.collection("counter").document(locId).get()
+                .addOnCompleteListener(taskCounter -> {
+                    if (taskCounter.isSuccessful()) {
+                        if (taskCounter.getResult() != null && taskCounter.getResult().exists() && taskCounter.getResult().get(username) != null) {
+                            Log.e(TAG, "setCounter: success");
+                            int count = Integer.parseInt(String.valueOf(taskCounter.getResult().getData().get(username)));
+                            count++;
+                            Log.e(TAG, "setCounter: " + count);
+                            ref.collection("counter").document(locId)
+                                    .update(username, count);
+                        } else {
+                            Log.e(TAG, "setCounter: not successful");
+                            Map<String, Object> counterData = new HashMap<>();
+                            counterData.put(username, "1");
+                            ref.collection("counter").document(locId).set(counterData, SetOptions.merge())
+                                    .addOnSuccessListener(aVoid -> {
+                                        Toast.makeText(this, "Document added to database", Toast.LENGTH_SHORT).show();
+                                    }).addOnFailureListener(e -> {
+                                Toast.makeText(this, "Document could not be added database", Toast.LENGTH_SHORT).show();
+
+                            });
+
+                        }
+                    } else {
+                        Log.e(TAG, "setCounter: "+"unsuccessful");
+                        Toast.makeText(this, "Document could not be found", Toast.LENGTH_SHORT).show();
+                    }
+                });
+
+
+    }
+
 
     private void getLocationList() {
 
         ref = FirebaseFirestore.getInstance();
         ref.collection("locations")
                 .get()
-                .addOnCompleteListener(new OnCompleteListener<QuerySnapshot>() {
-                    @Override
-                    public void onComplete(@NonNull Task<QuerySnapshot> task) {
-                        Utility.showGifPopup(MapsActivity.this, false, dialog);
+                .addOnCompleteListener(task -> {
+                    Utility.showGifPopup(MapsActivity.this, false, dialog);
 
-                        if (task.isSuccessful() && task.getResult() != null) {
-                            LocationModel locationModel;
-                            for (QueryDocumentSnapshot documentSnapshot : task.getResult()) {
-                                if (documentSnapshot.exists()) {
-                                    locationModel = new LocationModel();
-                                    Log.e("TAG", "onComplete: " + (documentSnapshot.getData().get("location_name")));
-                                    locationModel.setCount(String.valueOf(documentSnapshot.getData().get("count")));
-                                    locationModel.setLat(String.valueOf(documentSnapshot.getData().get("lat")));
-                                    locationModel.setLon(String.valueOf(documentSnapshot.getData().get("lon")));
-                                    locationModel.setLocationName(String.valueOf(documentSnapshot.getData().get("location_name")));
-                                    locationModel.setAudioFile(String.valueOf(documentSnapshot.getData().get("audio")));
-                                    locationModels.add(locationModel);
-                                }
+                    if (task.isSuccessful() && task.getResult() != null) {
+                        LocationModel locationModel;
+                        for (QueryDocumentSnapshot documentSnapshot : task.getResult()) {
+                            if (documentSnapshot.exists()) {
+                                locationModel = new LocationModel();
+                                Log.e("TAG", "onComplete: " + (documentSnapshot.getData().get("location_name")));
+                                locationModel.setCount(String.valueOf(documentSnapshot.getData().get("count")));
+                                locationModel.setLat(String.valueOf(documentSnapshot.getData().get("lat")));
+                                locationModel.setLon(String.valueOf(documentSnapshot.getData().get("lon")));
+                                locationModel.setLocationName(String.valueOf(documentSnapshot.getData().get("location_name")));
+                                locationModel.setAudioFile(String.valueOf(documentSnapshot.getData().get("audio")));
+
+                                circle = mMap.addCircle(new CircleOptions()
+                                        .center(new LatLng(Double.parseDouble(locationModel.getLat())
+                                                , Double.parseDouble(locationModel.getLon())))
+                                        .radius(50).fillColor(getResources().getColor(R.color.colorGrey)));
+                                locationModels.add(locationModel);
                             }
                         }
                     }
@@ -151,7 +281,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
     private void goToCurrentLocation(LatLng location) {
         mMap.addMarker(new MarkerOptions().position(location).title("Your Location"));
         mMap.moveCamera(CameraUpdateFactory.newLatLng(location));
-        mMap.animateCamera(CameraUpdateFactory.zoomTo(20.0f));  // zoom in
+        mMap.animateCamera(CameraUpdateFactory.zoomTo(18.0f));  // zoom in
     }
 
     public void setAlarm(View view) {
@@ -169,6 +299,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                     ArrayList<String> lat = new ArrayList<>();
                     ArrayList<String> lng = new ArrayList<>();
                     ArrayList<String> audio = new ArrayList<>();
+
                     for (LocationModel locationModel : locationModels) {
                         // Add a circle of radius 50 meter
                         lat.add(locationModel.getLat());
@@ -177,10 +308,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                         Log.e("TAG", "setAlarm:1 " + locationModel.getLat());
 
 
-                        circle = mMap.addCircle(new CircleOptions()
-                                .center(new LatLng(Double.parseDouble(locationModel.getLat())
-                                        , Double.parseDouble(locationModel.getLon())))
-                                .radius(50).fillColor(Color.GREEN));
+
                     }
 
 
@@ -201,8 +329,13 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
     }
 
     public void cancelAlarm(View view) {
+
+        if (mediaPlayer.isPlaying()) {
+            mediaPlayer.stop();
+        }
         Intent serviceIntent = new Intent(this, LocationService.class);
         stopService(serviceIntent);
+
 //        alarmManager.cancel(pendingIntent);
         Toast.makeText(getApplicationContext(), "Alarm canceled", Toast.LENGTH_SHORT).show();
     }
@@ -217,5 +350,20 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         current_location_longitutde = loc.getLongitude();
         location = new LatLng(current_location_latitude, current_location_longitutde);
         goToCurrentLocation(location);
+    }
+
+    public void getReport(View view) {
+
+        startActivity(new Intent(this, GetReport.class));
+    }
+
+    public void logOut(View view) {
+        if (mediaPlayer.isPlaying()) {
+            mediaPlayer.stop();
+        }
+        Intent serviceIntent = new Intent(this, LocationService.class);
+        stopService(serviceIntent);
+
+        startActivity(new Intent(this, LoginPage.class));
     }
 }

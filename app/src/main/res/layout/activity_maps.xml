@@ -16,12 +16,22 @@
     <ImageView
         android:id="@+id/ic_gps"
         android:layout_width="40dp"
-        android:onClick="getMyLocation"
         android:layout_height="40dp"
         android:layout_alignParentRight="true"
         android:layout_margin="25dp"
+        android:onClick="getMyLocation"
         android:scaleType="centerCrop"
         android:src="@drawable/ic_gps_fixed_black_24dp" />
+
+    <ImageView
+        android:id="@+id/log_out"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
+        android:layout_alignParentLeft="true"
+        android:layout_margin="25dp"
+        android:onClick="logOut"
+        android:scaleType="centerCrop"
+        android:src="@drawable/ic_arrow_back_black_24dp" />
 
     <com.google.android.material.floatingactionbutton.FloatingActionButton
         android:id="@+id/start_alarm"
@@ -43,4 +53,15 @@
         android:layout_marginBottom="100dp"
         android:onClick="cancelAlarm"
         android:src="@drawable/ic_alarm_off_black_24dp" />
+
+    <com.google.android.material.floatingactionbutton.FloatingActionButton
+        android:id="@+id/report"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_alignParentLeft="true"
+        android:layout_alignParentBottom="true"
+        android:layout_marginLeft="20dp"
+        android:layout_marginBottom="100dp"
+        android:onClick="getReport"
+        android:src="@drawable/ic_assessment_white_24dp" />
 </RelativeLayout>
