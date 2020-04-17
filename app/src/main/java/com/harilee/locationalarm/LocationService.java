@@ -33,16 +33,22 @@ import androidx.core.app.ActivityCompat;
 import androidx.core.app.NotificationCompat;
 import androidx.core.app.NotificationManagerCompat;
 
+import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.model.Circle;
 import com.google.android.gms.maps.model.CircleOptions;
 import com.google.android.gms.maps.model.LatLng;
+import com.google.firebase.firestore.FirebaseFirestore;
+import com.google.firebase.firestore.QueryDocumentSnapshot;
 
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 
+import javax.xml.datatype.XMLGregorianCalendar;
+
 import static android.app.ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND;
 import static android.app.ActivityManager.RunningAppProcessInfo.IMPORTANCE_VISIBLE;
+import static android.content.ContentValues.TAG;
 
 
 public class LocationService extends Service {
@@ -70,6 +76,8 @@ public class LocationService extends Service {
     private AlarmManager am;
     private String latStr, lonStr;
     private final IBinder binder = new LocalBinder();
+    private ArrayList<LocationModel> locationModels = new ArrayList<>();
+    private GoogleMap mMap;
 
     private void setAlarm() {
         state = false;
@@ -122,7 +130,7 @@ public class LocationService extends Service {
 
 
     private void getMyLocation() {
-        Log.e(TAG, "getMyLocation: ");
+        //Toast.makeText(this, "searching...", Toast.LENGTH_SHORT).show();
         mLocationManager = (LocationManager)
                 getSystemService(Context.LOCATION_SERVICE);
         mLocationListener = new LocationListener() {
@@ -200,12 +208,13 @@ public class LocationService extends Service {
 
         state = true;
         final Handler handler = new Handler();
-        final int delay = 1000; //milliseconds
+        final int delay = 5000; //milliseconds
         handler.postDelayed(new Runnable() {
             public void run() {
                 try {
                     if (state) {
                         getMyLocation();
+                      //  getLocation();
                         if (IsInCircle()) {
                             setAlarm();
                             state = false;
@@ -221,6 +230,58 @@ public class LocationService extends Service {
 
         return START_STICKY;
 
+    }
+
+    private void getLocation() {
+        FirebaseFirestore ref = FirebaseFirestore.getInstance();
+        ref.collection("radius").get().addOnCompleteListener(task -> {
+            for (QueryDocumentSnapshot documentSnapshot : task.getResult()) {
+                rad = String.valueOf(documentSnapshot.getData().get("value"));
+                Log.e(TAG, "onCreate: " + rad);
+
+            }
+        }).addOnFailureListener(e -> {
+            Log.e(TAG, "onCreate: failure");
+
+        });
+        ref.collection("locations")
+                .get()
+                .addOnCompleteListener(task -> {
+
+                    if (task.isSuccessful() && task.getResult() != null) {
+                        LocationModel locationModel;
+                        locationModels.clear();
+                        for (QueryDocumentSnapshot documentSnapshot : task.getResult()) {
+                            if (documentSnapshot.exists()) {
+                                if (String.valueOf(documentSnapshot.getData().get("playable")).equalsIgnoreCase("true")) {
+                                    locationModel = new LocationModel();
+                                    Log.e("TAG", "onComplete: " + (documentSnapshot.getData().get("location_name")));
+                                    locationModel.setCount(String.valueOf(documentSnapshot.getData().get("count")));
+                                    locationModel.setLat(String.valueOf(documentSnapshot.getData().get("lat")));
+                                    locationModel.setLon(String.valueOf(documentSnapshot.getData().get("lon")));
+                                    locationModel.setLocationName(String.valueOf(documentSnapshot.getData().get("location_name")));
+                                    locationModel.setAudioFile(String.valueOf(documentSnapshot.getData().get("audio")));
+
+                                    circle = mMap.addCircle(new CircleOptions()
+                                            .center(new LatLng(Double.parseDouble(locationModel.getLat())
+                                                    , Double.parseDouble(locationModel.getLon())))
+                                            .radius(Double.parseDouble(rad)).fillColor(getResources().getColor(R.color.colorGrey)));
+                                    locationModels.add(locationModel);
+                                }
+                            }
+                        }
+                    }
+                });
+
+        for (LocationModel locationModel : locationModels) {
+            // Add a circle of radius 50 meter
+            latList.add(locationModel.getLat());
+            lngList.add(locationModel.getLon());
+            audio.add((locationModel.getAudioFile()));
+            Log.e("TAG", "setAlarm:1 " + locationModel.getLat());
+
+
+        }
     }
 
     @Override

@@ -37,6 +37,7 @@ public class GetReport extends AppCompatActivity {
     private ArrayList<LocationModel> locationModelLocationList = new ArrayList<>();
     private String name = "";
     private String user = "";
+    private String date = "";
 
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
@@ -137,11 +138,13 @@ public class GetReport extends AppCompatActivity {
 
     private void getReport(LocationModel locationModel) {
 
-        TextView locationName, locationLat, locationLon, count, userName, userCount;
+        TextView locationName, locationLat, locationLon, count, userName, userCount, dateStr;
         CardView cardReport;
         LinearLayout userLayout;
         ProgressBar userProgress;
-
+        name = "";
+        user = "";
+        date = "";
         BottomSheetDialog dialog = new BottomSheetDialog(this, R.style.SheetDialog);
         dialog.setContentView(R.layout.report_data);
         cardReport = dialog.findViewById(R.id.card_report);
@@ -153,6 +156,7 @@ public class GetReport extends AppCompatActivity {
         userLayout = dialog.findViewById(R.id.user_layout);
         userProgress = dialog.findViewById(R.id.user_count_progress);
         userCount = dialog.findViewById(R.id.user_count);
+        dateStr = dialog.findViewById(R.id.date);
 
         dialog.show();
 
@@ -182,11 +186,9 @@ public class GetReport extends AppCompatActivity {
                                 counterModelList.add(counterModel);
                             }
                             for (CounterModel counterModel1 : counterModelList) {
-                                name = name + counterModel1.getName() + "\n";
                                 user = user + counterModel1.getCount() + "\n";
 
                             }
-                            userName.setText(name);
                             userCount.setText(user);
                         }
                     }
@@ -196,6 +198,32 @@ public class GetReport extends AppCompatActivity {
             Toast.makeText(this, "No data to show", Toast.LENGTH_SHORT).show();
         });
 
+        ref.collection("date").document(locationModel.getLat() + locationModel.getLon())
+                .get()
+                .addOnCompleteListener(task -> {
+                    if (task.isSuccessful() && task.getResult() != null) {
+                        Map<String, Object> map = task.getResult().getData();
+                        CounterModel counterModel;
+                        List<CounterModel> counterModelList = new ArrayList<>();
+                        if (map != null) {
+                            for (Map.Entry<String, Object> entry : map.entrySet()) {
+                                counterModel = new CounterModel();
+                                counterModel.setName(entry.getKey());
+                                counterModel.setDate(String.valueOf(entry.getValue()));
+                                counterModelList.add(counterModel);
+
+                            }
+                            for (CounterModel counterModel1 : counterModelList) {
+                                name = name + counterModel1.getName() + "\n";
+                                date = date + counterModel1.getDate() + "\n";
+                            }
+                            userName.setText(name);
+                            dateStr.setText(date);
+                        }
+                    }
+                }).addOnFailureListener(e -> {
+
+        });
         dialog.setCancelable(true);
     }
 }
