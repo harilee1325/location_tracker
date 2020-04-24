@@ -10,6 +10,7 @@ import android.media.MediaPlayer;
 import android.media.Ringtone;
 import android.media.RingtoneManager;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Vibrator;
 import android.util.Log;
 import android.widget.Toast;
@@ -17,18 +18,22 @@ import android.widget.Toast;
 
 import androidx.core.app.NotificationCompat;
 import androidx.core.app.NotificationManagerCompat;
+import androidx.core.content.ContextCompat;
 
 import com.google.android.gms.location.Geofence;
 import com.google.android.gms.location.GeofenceStatusCodes;
 import com.google.android.gms.location.GeofencingEvent;
-
+import com.google.firebase.FirebaseApp;
+import com.google.firebase.firestore.FirebaseFirestore;
+import com.google.firebase.firestore.QueryDocumentSnapshot;
 import java.util.List;
 
 import static android.content.ContentValues.TAG;
+import static com.harilee.locationalarm.App.CHANNEL_ID;
 
 
 public class MyBroadCastReceiver extends BroadcastReceiver {
-    private static final String CHANNEL_ID = "1";
+    private String audioFile;
 
     @Override
     public void onReceive(Context context, Intent intent) {
@@ -55,37 +60,70 @@ public class MyBroadCastReceiver extends BroadcastReceiver {
             Utility.setPreference(context, "LOCATION_ID", locId);
 
             // Get the transition details as a String.
-            String geofenceTransitionDetails = getGeofenceTransitionDetails(
-                    this,
-                    geofenceTransition,
-                    triggeringGeofences
-            );
+
+            //sendNotification(locId, context);
 
             // Send notification and log the transition details.
-            sendNotification("You have reached one of the geofenced location", context);
+            Intent serviceIntent = new Intent(context, LocationService.class);
+            serviceIntent.putExtra("LOCID", locId);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(serviceIntent);
+            }else{
+                context.startService(serviceIntent);
+            }
         } else {
             // Log the error.
             Log.e(TAG, "Error");
         }
     }
 
-    private void sendNotification(String geofenceTransitionDetails, Context context) {
-
+    private void sendNotification(String locId, Context context) {
         NotificationCompat.Builder builder = new NotificationCompat.Builder(context, CHANNEL_ID)
                 .setSmallIcon(R.drawable.ic_add_alarm_black_24dp)
                 .setContentTitle("Location Reached")
-                .setContentText(geofenceTransitionDetails)
+                .setContentText(" you reached " + locId)
                 .setPriority(NotificationCompat.PRIORITY_DEFAULT)
                 // Set the intent that will fire when the user taps the notification
                 .setAutoCancel(true);
         NotificationManagerCompat notificationManager = NotificationManagerCompat.from(context);
         // notificationId is a unique int for each notification that you must define
         notificationManager.notify(1, builder.build());
-        Intent intent1 = new Intent(context, MapsActivity.class);
-        intent1.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
-        intent1.putExtra("PLAY", "yes");
-        context.startActivity(intent1);
+    }
 
+
+    private void getLocation(Context context, String locId) {
+        FirebaseApp.initializeApp(context);
+        FirebaseFirestore ref = FirebaseFirestore.getInstance();
+        ref.collection("locations")
+                .get()
+                .addOnCompleteListener(task -> {
+                    if (task.isSuccessful() && task.getResult() != null) {
+                        for (QueryDocumentSnapshot documentSnapshot : task.getResult()) {
+                            if (documentSnapshot.exists()) {
+                                Toast.makeText(context, "sucess", Toast.LENGTH_SHORT).show();
+                                if (locId.equalsIgnoreCase(String.valueOf(documentSnapshot.getData().get("lat")) + documentSnapshot.getData().get("lon"))) {
+                                    audioFile = String.valueOf(documentSnapshot.getData().get("audio"));
+                                    Log.e(TAG, "getLocation: " + audioFile);
+                                    Intent serviceIntent = new Intent(context, LocationService.class);
+                                    serviceIntent.putExtra("audio", audioFile);
+                                    context.startService(serviceIntent);
+
+                                  /*  MediaPlayer mediaPlayer = new MediaPlayer();
+                                    mediaPlayer.setAudioAttributes(new AudioAttributes
+                                            .Builder()
+                                            .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                                            .build());
+                                    mediaPlayer.setDataSource(audioFile);
+                                    mediaPlayer.prepare(); // might take long! (for buffering, etc)
+                                    mediaPlayer.start();*/
+                                } else {
+                                    Toast.makeText(context, "No such locations found", Toast.LENGTH_SHORT).show();
+                                }
+
+                            }
+                        }
+                    }
+                });
     }
 
     private String getGeofenceTransitionDetails(MyBroadCastReceiver myBroadCastReceiver

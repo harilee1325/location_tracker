@@ -41,6 +41,7 @@ dependencies {
     //circular indicator
     implementation 'com.github.ibrahimsn98:CirclesLoadingView:1.0'
     implementation 'com.google.android.gms:play-services-location:17.0.0'
+    implementation files('libs/poishadow-all.jar')
 
 }
 apply plugin: 'com.google.gms.google-services'

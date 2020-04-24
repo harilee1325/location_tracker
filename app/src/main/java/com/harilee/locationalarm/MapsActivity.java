@@ -116,6 +116,9 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
     private Marker currentLocationMarker;
     private MarkerOptions markerOptions;
     private boolean moveCamer = false;
+    private boolean isPermissionGranted;
+    private boolean mBounded;
+    private LocationService locationService;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -123,15 +126,14 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         setContentView(R.layout.activity_maps);
 
         dialog = new Dialog(this);
-        getWindow().setFlags(WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
-                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS);
+
         // Obtain the SupportMapFragment and get notified when the map is ready to be used.
         SupportMapFragment mapFragment = (SupportMapFragment) getSupportFragmentManager()
                 .findFragmentById(R.id.map);
         mapFragment.getMapAsync(this);
         // Create the NotificationChannel, but only on API 26+ because
         // the NotificationChannel class is new and not in the support library
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+      /*  if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             CharSequence name = "Location";
             String description = "Location arrived";
             int importance = NotificationManager.IMPORTANCE_DEFAULT;
@@ -143,7 +145,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
             if (notificationManager != null) {
                 notificationManager.createNotificationChannel(channel);
             }
-        }
+        }*/
         googleApiClient = new GoogleApiClient.Builder(this)
                 .addApi(LocationServices.API)
                 .addConnectionCallbacks(this)
@@ -151,130 +153,45 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 
         geofencingClient = LocationServices.getGeofencingClient(this);
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
-                != PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED
-                && ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_BACKGROUND_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+                != PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+                != PackageManager.PERMISSION_GRANTED
+                && ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.ACCESS_BACKGROUND_LOCATION}, REQUEST_CODE);
+            Log.e(TAG, "onCreate: permission denied");
+            isPermissionGranted = false;
 
+        } else {
+            Log.e(TAG, "onCreate: permission granded");
+            isPermissionGranted = true;
+            getLocationList();
 
-            ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.ACCESS_FINE_LOCATION
-                            , Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.ACCESS_BACKGROUND_LOCATION}
-                    , REQUEST_CODE);
         }
         Utility.showGifPopup(this, true, dialog);
-        getLocationList();
 
-        mediaPlayer = new MediaPlayer();
-        if (getIntent().hasExtra("PLAY")) {
-            String play = getIntent().getStringExtra("PLAY");
-            if (play != null && play.equalsIgnoreCase("yes")) {
-                setCounter();
 
+    }
+
+    public void onRequestPermissionsResult(int requestCode, String permissions[], int[] grantResults) {
+        switch (requestCode) {
+            case 1: {
+                // If request is cancelled, the result arrays are empty.
+                if (grantResults.length > 0
+                        && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                    isPermissionGranted = true;
+                    getMyLocation();
+
+
+                } else {
+                    isPermissionGranted = false;
+                    Toast.makeText(this, "please grant permission to continue", Toast.LENGTH_SHORT).show();
+                    // permission denied, boo! Disable the
+                    // functionality that depends on this permission.
+                }
+                return;
             }
+            // other 'case' lines to check for other
+            // permissions this app might request
         }
-
-    }
-
-    private void playAudio() {
-
-
-        try {
-            mediaPlayer.setAudioStreamType(AudioManager.STREAM_MUSIC);
-            mediaPlayer.setDataSource(Utility.getPreference(this, "AUDIO"));
-            mediaPlayer.prepare(); // might take long! (for buffering, etc)
-            mediaPlayer.start();
-
-            removeGeofence();
-
-        } catch (Exception e) {
-            // TODO: handle exception
-            Log.e(TAG, "onReceive: " + e.getLocalizedMessage());
-        }
-
-
-    }
-
-    private void setCounter() {
-
-        String username = Utility.getPreference(this, "USERNAME");
-        String locId = Utility.getPreference(this, "LOCATION_ID");
-        SimpleDateFormat formatter = new SimpleDateFormat("dd-MM-yyyy HH:mm ");
-        Date date = new Date();
-        System.out.println(formatter.format(date));
-        String dateStr = formatter.format(date);
-        Log.e(TAG, "setCounter: " + username);
-        Log.e(TAG, "setCounter: " + locId);
-        List<String> users = new ArrayList<>();
-        ref = FirebaseFirestore.getInstance();
-        ref.collection("locations")
-                .get()
-                .addOnCompleteListener(task -> {
-                    if (task.isSuccessful() && task.getResult() != null) {
-                        for (QueryDocumentSnapshot documentSnapshot : task.getResult()) {
-                            if (documentSnapshot.exists()) {
-                                String loc = String.valueOf(documentSnapshot.getData().get("lat")) + documentSnapshot.getData().get("lon");
-                                Utility.setPreference(this, "AUDIO", String.valueOf(documentSnapshot.getData().get("audio")));
-                                playAudio();
-                                Log.e(TAG, "setCounter:  " + loc + " " + locId);
-                                if (loc.equalsIgnoreCase(locId)) {
-                                    int count = Integer.parseInt(String.valueOf(documentSnapshot.getData().get("count")));
-                                    count++;
-                                    int finalCount = count;
-                                    ref.collection("locations").document(documentSnapshot.getId())
-                                            .update("count", finalCount).addOnSuccessListener(aVoid -> {
-                                        Toast.makeText(this, username + " visit count has been changed to " + finalCount, Toast.LENGTH_SHORT).show();
-                                    });
-                                    ref.collection("locations").document(documentSnapshot.getId())
-                                            .update("users", FieldValue.arrayUnion(username)).addOnSuccessListener(aVoid -> {
-                                        Toast.makeText(this, username + " visited a new location", Toast.LENGTH_SHORT).show();
-                                    });
-
-                                }
-                            }
-                        }
-                    }
-                });
-
-        //adding location to visited counter
-        Map<String, Object> dateObj = new HashMap<>();
-        dateObj.put(username, dateStr);
-        ref.collection("date").document(locId).set(dateObj, SetOptions.merge())
-                .addOnSuccessListener(aVoid -> {
-                    Toast.makeText(this, "Document added to database", Toast.LENGTH_SHORT).show();
-                }).addOnFailureListener(e -> {
-            Toast.makeText(this, "Document could not be added database", Toast.LENGTH_SHORT).show();
-
-        });
-
-
-        ref.collection("counter").document(locId).get()
-                .addOnCompleteListener(taskCounter -> {
-                    if (taskCounter.isSuccessful()) {
-                        if (taskCounter.getResult() != null && taskCounter.getResult().exists() && taskCounter.getResult().get(username) != null) {
-                            Log.e(TAG, "setCounter: success");
-                            int count = Integer.parseInt(String.valueOf(taskCounter.getResult().getData().get(username)));
-                            count++;
-                            Log.e(TAG, "setCounter: " + count);
-                            ref.collection("counter").document(locId)
-                                    .update(username, count);
-                        } else {
-                            Log.e(TAG, "setCounter: not successful");
-                            Map<String, Object> counterData = new HashMap<>();
-                            counterData.put(username, "1");
-                            ref.collection("counter").document(locId).set(counterData, SetOptions.merge())
-                                    .addOnSuccessListener(aVoid -> {
-                                        Toast.makeText(this, "Document added to database", Toast.LENGTH_SHORT).show();
-                                    }).addOnFailureListener(e -> {
-                                Toast.makeText(this, "Document could not be added database", Toast.LENGTH_SHORT).show();
-
-                            });
-
-                        }
-                    } else {
-                        Log.e(TAG, "setCounter: " + "unsuccessful");
-                        Toast.makeText(this, "Document could not be found", Toast.LENGTH_SHORT).show();
-                    }
-                });
-
-
     }
 
 
@@ -308,7 +225,6 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                                                     // Set the request ID of the geofence. This is a string to identify this
                                                     // geofence.
                                                     .setRequestId(locationModel.getLat() + locationModel.getLon())
-
                                                     .setCircularRegion(
                                                             Double.parseDouble(locationModel.getLat()),
                                                             Double.parseDouble(locationModel.getLon()),
@@ -323,7 +239,8 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                                                     .center(new LatLng(Double.parseDouble(locationModel.getLat())
                                                             , Double.parseDouble(locationModel.getLon())))
                                                     .radius(Double.parseDouble(radius))
-                                                    .fillColor(getResources().getColor(R.color.colorGrey)));
+                                                    .strokeColor(getResources().getColor(R.color.lignt_primary))
+                                                    .fillColor(getResources().getColor(R.color.lignt_primary)));
                                             locationModels.add(locationModel);
                                         }
                                     }
@@ -341,21 +258,9 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 
     @Override
     public void onMapReady(GoogleMap googleMap) {
-        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
-            return;
-        }
-        lm = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
-        Location loc = lm.getLastKnownLocation(LocationManager.NETWORK_PROVIDER);
-
-        current_location_longitutde = loc.getLongitude();
-        current_location_latitude = loc.getLatitude();
-        LatLng latLng = new LatLng(current_location_latitude, current_location_longitutde);
-
         mMap = googleMap;
-        moveCamer = true;
-        googleMap.setMyLocationEnabled(true);
-
-
+        lm = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
+        getMyLocation();
     }
 
     private GeofencingRequest getGeofencingRequest() {
@@ -370,12 +275,9 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         if (geofencePendingIntent != null) {
             return geofencePendingIntent;
         }
-
+        Toast.makeText(getApplicationContext(), "starting broadcast", Toast.LENGTH_SHORT).show();
         Intent intent = new Intent(this, MyBroadCastReceiver.class);
-        // We use FLAG_UPDATE_CURRENT so that we get the same pending intent back when
-        // calling addGeofences() and removeGeofences().
-        geofencePendingIntent = PendingIntent.getBroadcast(this, 0, intent, PendingIntent.
-                FLAG_UPDATE_CURRENT);
+        geofencePendingIntent = PendingIntent.getBroadcast(this, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT);
         return geofencePendingIntent;
     }
 
@@ -389,24 +291,23 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                     .setFastestInterval(1000)
                     .setPriority(LocationRequest.PRIORITY_HIGH_ACCURACY);
             try {
-                LocationServices.FusedLocationApi.requestLocationUpdates(googleApiClient, locationRequest, new com.google.android.gms.location.LocationListener() {
-                    @Override
-                    public void onLocationChanged(Location location) {
-                        if (moveCamer) {
-                            moveCamer = false;
-                            mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(new LatLng(location.getLatitude(), location.getLongitude())
-                                    , 18.0f));
-                        }
-
-                        if (currentLocationMarker != null) {
-                            currentLocationMarker.remove();
-                        }
-                        markerOptions = new MarkerOptions();
-                        markerOptions.position(new LatLng(location.getLatitude(), location.getLongitude()));
-                        markerOptions.title("Current Location");
-                        currentLocationMarker = mMap.addMarker(markerOptions);
-                        Log.d(TAG, "Location Change Lat Lng " + location.getLatitude() + " " + location.getLongitude());
+                LocationServices.FusedLocationApi.requestLocationUpdates(googleApiClient, locationRequest, location -> {
+                    if (moveCamer) {
+                        moveCamer = false;
+                        mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(new LatLng(location.getLatitude(), location.getLongitude())
+                                , 18.0f));
                     }
+                    if (currentLocationMarker != null) {
+                        currentLocationMarker.remove();
+                    }
+
+                    geofencingClient = LocationServices.getGeofencingClient(this);
+
+                    markerOptions = new MarkerOptions();
+                    markerOptions.position(new LatLng(location.getLatitude(), location.getLongitude()));
+                    markerOptions.title("Current Location");
+                    currentLocationMarker = mMap.addMarker(markerOptions);
+                    Log.d(TAG, "Location Change Lat Lng " + location.getLatitude() + " " + location.getLongitude());
                 });
             } catch (SecurityException e) {
                 Log.d(TAG, e.getMessage());
@@ -422,10 +323,13 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
     @Override
     protected void onStart() {
         super.onStart();
+        Intent mIntent = new Intent(this, LocationService.class);
+        bindService(mIntent, mConnection, BIND_AUTO_CREATE);
 
-        if (this.googleApiClient != null) {
-            this.googleApiClient.connect();
-        }
+        /*Intent serviceIntent = new Intent(this, LocationService.class);
+        stopService(serviceIntent);*/
+        if (googleApiClient != null)
+            googleApiClient.connect();
     }
 
     private void addGeofence() {
@@ -450,49 +354,86 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         Toast.makeText(getApplicationContext(), "Audio canceled", Toast.LENGTH_SHORT).show();
     }
 
-    public void cancelAlarm(View view) {
-
-        if (mediaPlayer.isPlaying()) {
-            mediaPlayer.stop();
+    ServiceConnection mConnection = new ServiceConnection() {
+        @Override
+        public void onServiceDisconnected(ComponentName name) {
+            Toast.makeText(getApplicationContext(), "Service is disconnected", Toast.LENGTH_SHORT).show();
+            mBounded = false;
+            locationService = null;
         }
+
+        @Override
+        public void onServiceConnected(ComponentName name, IBinder service) {
+            Toast.makeText(getApplicationContext(), "Service is connected", Toast.LENGTH_SHORT).show();
+            mBounded = true;
+            LocationService.LocalBinder mLocalBinder = (LocationService.LocalBinder) service;
+            MapsActivity.this.locationService = mLocalBinder.getService();
+        }
+    };
+
+    public void cancelAlarm(View view) {
+        if (mBounded)
+            locationService.stopPlaying();
+        Intent intent = new Intent(this, LocationService.class);
+        stopService(intent);
         removeGeofence();
 
     }
 
-    public void getMyLocation(View view) {
-        if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED && checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+    public void getMyLocation() {
 
-            return;
+        //mMap.setBuildingsEnabled(true);
+
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) !=
+                PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION)
+                != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, REQUEST_CODE);
+        } else {
+            moveCamer = true;
+            mMap.setMyLocationEnabled(true);
+            if (isPermissionGranted)
+                getLocationList();
+
+            goToCurrentLocation();
+
         }
-        Location loc = lm.getLastKnownLocation(LocationManager.NETWORK_PROVIDER);
-        current_location_longitutde = loc.getLongitude();
-        current_location_latitude = loc.getLatitude();
-        LatLng latLng = new LatLng(current_location_latitude, current_location_longitutde);
     }
 
     public void getReport(View view) {
 
-        startActivity(new Intent(this, GetReport.class));
+
+        if (Utility.getPreference(this, "USERNAME").equalsIgnoreCase("joy") ||
+                Utility.getPreference(this, "USERNAME").equalsIgnoreCase("hari"))
+            startActivity(new Intent(this, GetReport.class));
+        else
+            Toast.makeText(this, "Sorry you dont have access to view report", Toast.LENGTH_SHORT).show();
     }
 
     public void logOut(View view) {
-        if (mediaPlayer.isPlaying()) {
-            mediaPlayer.stop();
-        }
 
-        startActivity(new Intent(this, LoginPage.class));
+        startActivity(new Intent(this, ProfilePage.class));
     }
 
     public void refreshData(View view) {
         Utility.showGifPopup(MapsActivity.this, true, dialog);
-
         getLocationList();
         setAlarm(view);
     }
 
     @Override
     public void onConnected(@Nullable Bundle bundle) {
-        goToCurrentLocation();
+        if (isPermissionGranted)
+            goToCurrentLocation();
+
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        if (mBounded) {
+            unbindService(mConnection);
+            mBounded = false;
+        }
 
     }
 
@@ -504,6 +445,12 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
     @Override
     public void onConnectionFailed(@NonNull ConnectionResult connectionResult) {
 
+    }
+
+    @Override
+    public void onBackPressed() {
+        super.onBackPressed();
+        finishAffinity();
     }
 }
  /* ArrayList<String> lat = new ArrayList<>();

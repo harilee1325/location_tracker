@@ -44,8 +44,11 @@ public class LoginPage extends AppCompatActivity {
         mobileNum.setVisibility(View.GONE);
         aadharNum.setVisibility(View.GONE);
         fullName.setVisibility(View.GONE);
+        String isLogin = Utility.getPreference(this, "IS_LOGIN");
+        if (isLogin.equalsIgnoreCase("yes")) {
+            startActivity(new Intent(this, MapsActivity.class));
 
-
+        }
 
 
     }
@@ -54,7 +57,7 @@ public class LoginPage extends AppCompatActivity {
 
         final String username = userName.getText().toString().trim();
 
-        if (!mobileNum.getText().toString().trim().isEmpty()){
+        if (!mobileNum.getText().toString().trim().isEmpty()) {
             registerUser();
         }
         if (username.isEmpty()) {
@@ -70,6 +73,8 @@ public class LoginPage extends AppCompatActivity {
                         if (task.isSuccessful()) {
                             if (task.getResult().size() > 0) {
                                 Utility.setPreference(this, "USERNAME", username);
+                                Utility.setPreference(this, "IS_LOGIN", "yes");
+
                                 Toast.makeText(getApplicationContext(), "User logged in successfully", Toast.LENGTH_SHORT).show();
                                 startActivity(new Intent(this, MapsActivity.class));
                             } else {
@@ -125,6 +130,7 @@ public class LoginPage extends AppCompatActivity {
                     .addOnSuccessListener(documentReference -> {
                         dialog1.cancel();
                         Utility.setPreference(this, "USERNAME", username);
+                        Utility.setPreference(this, "IS_LOGIN", "yes");
                         Toast.makeText(getApplicationContext(), "User added successfully", Toast.LENGTH_SHORT).show();
                         startActivity(new Intent(this, MapsActivity.class));
                     })
