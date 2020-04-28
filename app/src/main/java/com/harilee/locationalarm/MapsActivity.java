@@ -228,7 +228,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                                                     .setCircularRegion(
                                                             Double.parseDouble(locationModel.getLat()),
                                                             Double.parseDouble(locationModel.getLon()),
-                                                            (float) Double.parseDouble(radius)
+                                                            (float) Double.parseDouble(String.valueOf(documentSnapshot.getData().get("radius")))
                                                     )
                                                     .setTransitionTypes(Geofence.GEOFENCE_TRANSITION_ENTER)
                                                     .setExpirationDuration(Geofence.NEVER_EXPIRE)
@@ -238,7 +238,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                                             circle = mMap.addCircle(new CircleOptions()
                                                     .center(new LatLng(Double.parseDouble(locationModel.getLat())
                                                             , Double.parseDouble(locationModel.getLon())))
-                                                    .radius(Double.parseDouble(radius))
+                                                    .radius(Double.parseDouble(String.valueOf(documentSnapshot.getData().get("radius"))))
                                                     .strokeColor(getResources().getColor(R.color.lignt_primary))
                                                     .fillColor(getResources().getColor(R.color.lignt_primary)));
                                             locationModels.add(locationModel);
